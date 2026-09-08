@@ -4,7 +4,6 @@ from balik_youtube import videolari_getir
 
 LAT, LON = 36.30, 30.15  # Finike
 
-# Instagram hesapları: sağdaki adları gerçekleriyle değiştirin
 INSTAGRAM = {
     "Çağdaş Özsarı":  "cagdasozsari",
     "Tintin Fishing": "tintin.fishing",
@@ -26,11 +25,12 @@ su = deniz["current"]["sea_surface_temperature"]
 def ay_gunu(t):
     return ((t - datetime.date(2000, 1, 6)).days) % 29.53
 
-def ay_bonus(t):
+def ay_evre(t):
     g = ay_gunu(t)
-    if g < 2 or g > 27.5:   return 1.0, "🌑"
-    if 12.8 < g < 16.8:     return 1.0, "🌕"
-    return 0.0, ""
+    if g < 2 or g > 27.5:   return 1.0, "🌑", "Yeni ay"
+    if 12.8 < g < 16.8:     return 1.0, "🌕", "Dolunay"
+    if g < 12.8:            return 0.0, "🌓", "İlk yarı"
+    return 0.0, "🌗", "Son yarı"
 
 HAVA_IKON = {0:"☀️",1:"🌤",2:"⛅",3:"☁️",45:"🌫",48:"🌫",51:"🌦",53:"🌦",55:"🌧",
              61:"🌧",63:"🌧",65:"🌧",80:"🌦",81:"🌧",82:"⛈",95:"⛈",96:"⛈",99:"⛈"}
@@ -45,8 +45,7 @@ TURLER = {
 gunler = ["Pzt","Sal","Çar","Per","Cum","Cmt","Paz"]
 basinclar = hava["daily"]["surface_pressure_mean"]
 
-kartlar = []
-for i, tarih in enumerate(hava["daily"]["time"]):
+def gun_hesapla(i, tarih):
     ruzgar = hava["daily"]["wind_speed_10m_max"][i] / 1.852
     dalga = deniz["daily"]["wave_height_max"][i]
     kod = hava["daily"]["weather_code"][i]
@@ -56,108 +55,152 @@ for i, tarih in enumerate(hava["daily"]["time"]):
     if ruzgar > 10: skor -= (ruzgar - 10) * 0.6
     skor -= dalga * 3
 
-    basinc = ""
+    basinc_yon = ""
     if i > 0 and basinclar[i] is not None and basinclar[i-1] is not None:
         if basinclar[i] < basinclar[i-1] - 1:
-            skor += 0.5; basinc = "▼ basınç düşüyor"
+            skor += 0.5; basinc_yon = "▼"
         elif basinclar[i] > basinclar[i-1] + 1:
-            basinc = "▲ basınç yükseliyor"
+            basinc_yon = "▲"
 
-    bonus, ay = ay_bonus(t)
+    bonus, ay_ikon, ay_ad = ay_evre(t)
     skor += bonus
     skor = max(0, min(10, round(skor, 1)))
 
-    if skor >= 7:   renk, karar = "#16a34a", "⚓ Çıkılır"
-    elif skor >= 4: renk, karar = "#d97706", "~ İdare eder"
-    else:           renk, karar = "#dc2626", "✗ Olmaz"
+    if skor >= 7:   renk, karar = "#16a34a", "ÇIKILIR"
+    elif skor >= 4: renk, karar = "#d97706", "İDARE EDER"
+    else:           renk, karar = "#dc2626", "OLMAZ"
 
-    kartlar.append(f"""
-    <div class="kart" style="border-top:6px solid {renk}">
-      <div class="gun">{gunler[t.weekday()]} <span>{t.day:02d}.{t.month:02d}</span> {ay}</div>
-      <div class="ikon">{HAVA_IKON.get(kod, "🌊")}</div>
-      <div class="skor" style="color:{renk}">{skor}</div>
-      <div class="karar" style="color:{renk}">{karar}</div>
-      <div class="detay">💨 {ruzgar:.1f} kn<br>🌊 {dalga:.1f} m</div>
-      <div class="basinc">{basinc}</div>
-    </div>""")
+    return dict(t=t, ruzgar=ruzgar, dalga=dalga, ikon=HAVA_IKON.get(kod, "🌊"),
+                skor=skor, renk=renk, karar=karar,
+                basinc=basinc_yon, ay_ikon=ay_ikon, ay_ad=ay_ad)
+
+tum_gunler = [gun_hesapla(i, tarih) for i, tarih in enumerate(hava["daily"]["time"])]
+bugun_v = tum_gunler[0]
+sonraki = tum_gunler[1:]
+
+# --- Sonraki günler şeridi ---
+serit = ""
+for g in sonraki:
+    serit += f"""
+    <div class="skart" style="border-top:5px solid {g['renk']}">
+      <div class="skart-gun">{gunler[g['t'].weekday()]} <span>{g['t'].day:02d}.{g['t'].month:02d}</span></div>
+      <div class="skart-ikon">{g['ikon']}</div>
+      <div class="skart-skor" style="color:{g['renk']}">{g['skor']}</div>
+      <div class="skart-detay">💨{g['ruzgar']:.0f}kn 🌊{g['dalga']:.1f}m</div>
+    </div>"""
 
 # --- Instagram şeridi ---
-ig_linkler = []
-ig_urller = []
+ig_linkler, ig_urller = [], []
 for isim, hesap in INSTAGRAM.items():
-    if "KULLANICI_ADI" in hesap:
-        continue  # henüz doldurulmamış
     url = f"https://www.instagram.com/{hesap}/"
     ig_urller.append(url)
     ig_linkler.append(f'<a class="ig" href="{url}" target="_blank">📷 {isim}</a>')
+js_liste = ",".join(f"'{u}'" for u in ig_urller)
+ig_html = (f'<div class="igbar">{"".join(ig_linkler)}'
+           f'<button class="ig igbtn" onclick="[{js_liste}].forEach(u=>window.open(u))">'
+           f'⚡ Hepsini aç</button></div>')
 
-ig_html = ""
-if ig_linkler:
-    js_liste = ",".join(f"'{u}'" for u in ig_urller)
-    ig_html = (f'<div class="igbar">{"".join(ig_linkler)}'
-               f'<button class="ig igbtn" onclick="[{js_liste}].forEach(u=>window.open(u))">'
-               f'⚡ Hepsini aç</button></div>')
-
-# --- YouTube balıkçı kanalları ---
+# --- YouTube ---
 yt_html = ""
 for yas, kanal, turler, baslik in videolari_getir():
     ne_zaman = "bugün" if yas == 0 else ("dün" if yas == 1 else f"{yas} gün önce")
-    etiket = f'<b>{"/".join(turler)}</b> ' if turler else ""
-    yt_html += (f'<li>{etiket}<span class="zaman">@{kanal}, {ne_zaman}</span>'
-                f' — {baslik[:80]}</li>')
+    etiket = f'<span class="tur">{"/".join(turler)}</span> ' if turler else ""
+    yt_html += (f'<div class="sinyal">{etiket}<b>@{kanal}</b> '
+                f'<span class="zaman">{ne_zaman}</span><br>{baslik[:90]}</div>')
 if not yt_html:
-    yt_html = "<li>Son 14 günde video yok.</li>"
+    yt_html = '<div class="sinyal">Son 14 günde video yok.</div>'
 
-# --- Basın sinyalleri ---
+# --- Basın ---
 sinyal_html = ""
 for yas, turler, baslik in sinyalleri_getir():
     ne_zaman = "bugün" if yas == 0 else ("dün" if yas == 1 else f"{yas} gün önce")
-    sinyal_html += (f'<li><b>{"/".join(turler)}</b> '
-                    f'<span class="zaman">({ne_zaman})</span> — {baslik[:80]}</li>')
+    sinyal_html += (f'<div class="sinyal"><span class="tur">{"/".join(turler)}</span> '
+                    f'<span class="zaman">{ne_zaman}</span><br>{baslik[:90]}</div>')
 if not sinyal_html:
-    sinyal_html = "<li>Son 14 günde basın sinyali yok.</li>"
+    sinyal_html = '<div class="sinyal">Son 14 günde basın sinyali yok.</div>'
 
 bugun = datetime.date.today()
 html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Balık</title><style>
-  body {{ font-family:-apple-system,sans-serif; background:#0b1f33; color:#e8eef4;
-         margin:0; padding:24px; }}
-  h1 {{ margin:0 0 4px; font-size:26px; }}
-  .alt {{ color:#8fb3cc; margin-bottom:20px; }}
-  .ozet {{ background:#12324f; border-radius:12px; padding:14px 18px;
-           display:inline-block; margin-bottom:20px; line-height:1.7; }}  
-@media (max-width: 600px) {{
-    body {{ padding:12px; }}
-    h1 {{ font-size:20px; }}
-    .ozet {{ display:block; font-size:14px; }}
-    .kartlar {{ display:grid; grid-template-columns:1fr 1fr; }}
-    .kart {{ width:auto; }}
-    ul {{ padding-left:18px; font-size:14px; }}
-  }}
-  .kartlar {{ display:flex; gap:12px; flex-wrap:wrap; }}
-  .kart {{ background:#ffffff; color:#1e293b; border-radius:12px; padding:12px;
-           width:120px; text-align:center; }}
-  .gun {{ font-weight:700; }} .gun span {{ color:#64748b; font-weight:400; font-size:12px; }}
-  .ikon {{ font-size:30px; margin:6px 0; }}
-  .skor {{ font-size:30px; font-weight:800; }}
-  .karar {{ font-size:13px; font-weight:600; margin-bottom:6px; }}
-  .detay {{ font-size:13px; color:#475569; line-height:1.5; }}
-  .basinc {{ font-size:11px; color:#64748b; min-height:14px; }}
-  h2 {{ margin-top:28px; font-size:18px; }}
-  ul {{ line-height:1.9; }} .zaman {{ color:#8fb3cc; }}
-  .igbar {{ margin:18px 0 4px; display:flex; gap:10px; flex-wrap:wrap; }}
-  .ig {{ background:#12324f; color:#e8eef4; text-decoration:none; padding:8px 14px;
-         border-radius:20px; font-size:14px; border:1px solid #1e4a70; }}
-  .ig:hover {{ background:#1e4a70; }}
+  * {{ box-sizing:border-box; }}
+  body {{ font-family:-apple-system,sans-serif; background:#000; color:#f2f5f7;
+         margin:0; padding:14px; max-width:760px; margin-left:auto; margin-right:auto; }}
+  .tarih {{ color:#7d8b96; font-size:14px; margin:2px 0 12px; }}
+
+  .hero {{ border-radius:24px; padding:26px 20px 22px; text-align:center;
+           color:#fff; margin-bottom:14px; }}
+  .hero-gun {{ font-size:16px; font-weight:600; opacity:.9; letter-spacing:1px; }}
+  .hero-skor {{ font-size:104px; font-weight:900; line-height:1; margin:6px 0; }}
+  .hero-karar {{ font-size:30px; font-weight:800; letter-spacing:2px; }}
+  .hero-ikon {{ font-size:44px; margin-top:6px; }}
+
+  .kutular {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }}
+  .kutu {{ background:#14181d; border-radius:18px; padding:14px; text-align:center; }}
+  .kutu-ikon {{ font-size:30px; }}
+  .kutu-deger {{ font-size:26px; font-weight:800; margin-top:2px; }}
+  .kutu-ad {{ font-size:12px; color:#7d8b96; margin-top:2px; }}
+
+  h2 {{ font-size:17px; margin:20px 0 10px; color:#aebac4; }}
+  .serit {{ display:flex; gap:10px; overflow-x:auto; padding-bottom:6px;
+            -webkit-overflow-scrolling:touch; }}
+  .skart {{ background:#14181d; border-radius:16px; padding:12px; min-width:112px;
+            text-align:center; flex-shrink:0; }}
+  .skart-gun {{ font-weight:700; font-size:14px; }}
+  .skart-gun span {{ color:#7d8b96; font-weight:400; font-size:11px; }}
+  .skart-ikon {{ font-size:26px; margin:4px 0; }}
+  .skart-skor {{ font-size:26px; font-weight:800; }}
+  .skart-detay {{ font-size:12px; color:#7d8b96; margin-top:4px; }}
+
+  .igbar {{ display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; }}
+  .ig {{ background:#14181d; color:#f2f5f7; text-decoration:none; padding:10px 14px;
+         border-radius:22px; font-size:14px; white-space:nowrap; flex-shrink:0;
+         border:1px solid #232a31; }}
   .igbtn {{ cursor:pointer; font-family:inherit; }}
+
+  .sinyal {{ background:#101418; border-radius:14px; padding:12px 14px;
+             margin-bottom:8px; font-size:15px; line-height:1.5; }}
+  .tur {{ background:#1d4ed8; color:#fff; border-radius:8px; padding:1px 8px;
+          font-size:12px; font-weight:700; }}
+  .zaman {{ color:#7d8b96; font-size:13px; }}
 </style></head><body>
-<h1>🐟 Balık</h1>
-<div class="alt">{bugun.strftime("%d.%m.%Y")} itibarıyla 7 günlük görünüm</div>
-<div class="ozet">🌡 Deniz suyu: <b>{su} °C</b><br>🐟 Bu ay beklenen: <b>{TURLER[bugun.month]}</b></div>
-<div class="kartlar">{"".join(kartlar)}</div>
+<div class="tarih">🐟 Balık — Finike · {bugun.strftime("%d.%m.%Y")}</div>
+
+<div class="hero" style="background:{bugun_v['renk']}">
+  <div class="hero-gun">BUGÜN · {gunler[bugun_v['t'].weekday()].upper()}</div>
+  <div class="hero-skor">{bugun_v['skor']}</div>
+  <div class="hero-karar">{'⚓ ' if bugun_v['skor']>=7 else ''}{bugun_v['karar']}</div>
+  <div class="hero-ikon">{bugun_v['ikon']}</div>
+</div>
+
+<div class="kutular">
+  <div class="kutu"><div class="kutu-ikon">💨</div>
+    <div class="kutu-deger">{bugun_v['ruzgar']:.1f} kn</div>
+    <div class="kutu-ad">Rüzgar {bugun_v['basinc']}</div></div>
+  <div class="kutu"><div class="kutu-ikon">🌊</div>
+    <div class="kutu-deger">{bugun_v['dalga']:.1f} m</div>
+    <div class="kutu-ad">Dalga</div></div>
+  <div class="kutu"><div class="kutu-ikon">🌡</div>
+    <div class="kutu-deger">{su} °C</div>
+    <div class="kutu-ad">Deniz suyu</div></div>
+  <div class="kutu"><div class="kutu-ikon">{bugun_v['ay_ikon']}</div>
+    <div class="kutu-deger" style="font-size:18px">{bugun_v['ay_ad']}</div>
+    <div class="kutu-ad">Ay</div></div>
+</div>
+
+<div class="sinyal" style="background:#14181d">🐟 <b>Bu ay beklenen:</b> {TURLER[bugun.month]}</div>
+
+<h2>📅 Sonraki günler</h2>
+<div class="serit">{serit}</div>
+
+<h2>📷 Taze kaynaklar</h2>
 {ig_html}
-<h2>🎣 Balıkçı kanalları</h2><ul>{yt_html}</ul>
-<h2>📰 Basın sinyalleri</h2><ul>{sinyal_html}</ul>
+
+<h2>🎣 Balıkçı kanalları</h2>
+{yt_html}
+
+<h2>📰 Basın sinyalleri</h2>
+{sinyal_html}
 </body></html>"""
 
 yol = os.environ.get("CIKTI", os.path.expanduser("~/balik_raporu.html"))
