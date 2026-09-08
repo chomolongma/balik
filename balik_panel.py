@@ -119,7 +119,7 @@ if not sinyal_html:
 
 bugun = datetime.date.today()
 html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
-<title>Denize Çıkılır mı? — Finike</title><style>
+<title>Balık</title><style>
   body {{ font-family:-apple-system,sans-serif; background:#0b1f33; color:#e8eef4;
          margin:0; padding:24px; }}
   h1 {{ margin:0 0 4px; font-size:26px; }}
@@ -151,7 +151,7 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
   .ig:hover {{ background:#1e4a70; }}
   .igbtn {{ cursor:pointer; font-family:inherit; }}
 </style></head><body>
-<h1>⚓ Denize Çıkılır mı? — Finike</h1>
+<h1>🐟 Balık</h1>
 <div class="alt">{bugun.strftime("%d.%m.%Y")} itibarıyla 7 günlük görünüm</div>
 <div class="ozet">🌡 Deniz suyu: <b>{su} °C</b><br>🐟 Bu ay beklenen: <b>{TURLER[bugun.month]}</b></div>
 <div class="kartlar">{"".join(kartlar)}</div>
