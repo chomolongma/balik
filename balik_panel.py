@@ -125,7 +125,15 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
   h1 {{ margin:0 0 4px; font-size:26px; }}
   .alt {{ color:#8fb3cc; margin-bottom:20px; }}
   .ozet {{ background:#12324f; border-radius:12px; padding:14px 18px;
-           display:inline-block; margin-bottom:20px; line-height:1.7; }}
+           display:inline-block; margin-bottom:20px; line-height:1.7; }}  
+@media (max-width: 600px) {{
+    body {{ padding:12px; }}
+    h1 {{ font-size:20px; }}
+    .ozet {{ display:block; font-size:14px; }}
+    .kartlar {{ display:grid; grid-template-columns:1fr 1fr; }}
+    .kart {{ width:auto; }}
+    ul {{ padding-left:18px; font-size:14px; }}
+  }}
   .kartlar {{ display:flex; gap:12px; flex-wrap:wrap; }}
   .kart {{ background:#ffffff; color:#1e293b; border-radius:12px; padding:12px;
            width:120px; text-align:center; }}
