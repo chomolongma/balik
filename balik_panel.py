@@ -16,7 +16,8 @@ def getir(url):
         return json.load(c)
 
 hava = getir(f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}"
-             "&daily=wind_speed_10m_max,surface_pressure_mean,weather_code&timezone=auto")
+             "&daily=wind_speed_10m_max,surface_pressure_mean,weather_code,sunrise,sunset"
+             "&timezone=auto")
 deniz = getir(f"https://marine-api.open-meteo.com/v1/marine?latitude={LAT}&longitude={LON}"
               "&daily=wave_height_max&current=sea_surface_temperature&timezone=auto")
 
@@ -31,6 +32,25 @@ def ay_evre(t):
     if 12.8 < g < 16.8:     return 1.0, "🌕", "Dolunay"
     if g < 12.8:            return 0.0, "🌓", "İlk yarı"
     return 0.0, "🌗", "Son yarı"
+
+def s2str(saat):
+    """Ondalık saati '06:40' biçimine çevir."""
+    saat %= 24
+    h = int(saat)
+    m = int(round((saat - h) * 60))
+    if m == 60: h, m = (h + 1) % 24, 0
+    return f"{h:02d}:{m:02d}"
+
+def solunar(t):
+    """Yaklaşık solunar pencereler: Ay'ın tepe/dip geçişi = majör, doğuş/batışı = minör."""
+    yas = ay_gunu(t)
+    transit = (12.0 + yas * 0.813) % 24      # Ay her gün ~49 dk gecikir
+    dip = (transit + 12) % 24
+    majorler = sorted([transit, dip])
+    minorler = sorted([(transit - 6.2) % 24, (transit + 6.2) % 24])
+    maj = " & ".join(f"{s2str(m-1)}–{s2str(m+1)}" for m in majorler)
+    mnr = " & ".join(f"{s2str(m-0.5)}–{s2str(m+0.5)}" for m in minorler)
+    return maj, mnr
 
 HAVA_IKON = {0:"☀️",1:"🌤",2:"⛅",3:"☁️",45:"🌫",48:"🌫",51:"🌦",53:"🌦",55:"🌧",
              61:"🌧",63:"🌧",65:"🌧",80:"🌦",81:"🌧",82:"⛈",95:"⛈",96:"⛈",99:"⛈"}
@@ -74,24 +94,54 @@ def gun_hesapla(i, tarih):
     elif skor >= 4: renk, karar = "#d97706", "İDARE EDER"
     else:           renk, karar = "#dc2626", "OLMAZ"
 
+    dogus = hava["daily"]["sunrise"][i][-5:]   # "2026-09-09T06:45" -> "06:45"
+    batis = hava["daily"]["sunset"][i][-5:]
+
     return dict(t=t, ruzgar=ruzgar, dalga=dalga, ikon=HAVA_IKON.get(kod, "🌊"),
                 skor=skor, renk=renk, karar=karar,
-                basinc=basinc_yon, basinc_bonus=basinc_bonus, ay_ikon=ay_ikon, ay_ad=ay_ad)
+                basinc=basinc_yon, basinc_bonus=basinc_bonus,
+                ay_ikon=ay_ikon, ay_ad=ay_ad, dogus=dogus, batis=batis)
 
 tum_gunler = [gun_hesapla(i, tarih) for i, tarih in enumerate(hava["daily"]["time"])]
 bugun_v = tum_gunler[0]
 sonraki = tum_gunler[1:]
 
+# --- Haftanın günü ---
+en_iyi = max(tum_gunler, key=lambda g: g["skor"])
+en_iyi_ad = "BUGÜN" if en_iyi is bugun_v else f"{gunler[en_iyi['t'].weekday()]} {en_iyi['t'].day:02d}.{en_iyi['t'].month:02d}"
+
+# --- Bugünün solunar & altın saatleri ---
+maj, mnr = solunar(bugun_v["t"])
+
+# --- Haftalık grafik (SVG, Python'dan üretiliyor) ---
+W, H, SOL, UST = 680, 150, 30, 16
+adim = (W - 2*SOL) / (len(tum_gunler) - 1)
+noktalar, etiketler = [], []
+for i, g in enumerate(tum_gunler):
+    x = SOL + i * adim
+    y = UST + (10 - g["skor"]) / 10 * (H - UST - 34)
+    noktalar.append(f"{x:.0f},{y:.0f}")
+    gad = "Bugün" if i == 0 else gunler[g["t"].weekday()]
+    etiketler.append(
+        f'<circle cx="{x:.0f}" cy="{y:.0f}" r="5" fill="{g["renk"]}"/>'
+        f'<text x="{x:.0f}" y="{y-10:.0f}" text-anchor="middle" fill="{g["renk"]}" '
+        f'font-size="13" font-weight="700">{g["skor"]}</text>'
+        f'<text x="{x:.0f}" y="{H-6}" text-anchor="middle" fill="#7d8b96" font-size="12">{gad}</text>')
+grafik = (f'<svg viewBox="0 0 {W} {H}" style="width:100%;height:auto">'
+          f'<polyline points="{" ".join(noktalar)}" fill="none" stroke="#334155" stroke-width="2"/>'
+          + "".join(etiketler) + '</svg>')
+
 # --- Sonraki günler şeridi ---
 serit = ""
 for g in sonraki:
+    yildiz = "⭐ " if g is en_iyi else ""
     serit += f"""
     <div class="skart" style="border-top:5px solid {g['renk']}">
-      <div class="skart-gun">{gunler[g['t'].weekday()]} <span>{g['t'].day:02d}.{g['t'].month:02d}</span></div>
+      <div class="skart-gun">{yildiz}{gunler[g['t'].weekday()]} <span>{g['t'].day:02d}.{g['t'].month:02d}</span></div>
       <div class="skart-ikon">{g['ikon']}</div>
       <div class="skart-skor" style="color:{g['renk']}">{g['skor']}</div>
       <div class="skart-detay">💨{g['ruzgar']:.0f}kn 🌊{g['dalga']:.1f}m</div>
-        {"<div class='rozet'>🎣 basınç avantajı</div>" if g['basinc_bonus'] else ""}
+      {"<div class='rozet'>🎣 basınç avantajı</div>" if g['basinc_bonus'] else ""}
     </div>"""
 
 # --- Instagram şeridi ---
@@ -140,13 +190,18 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
   .hero-karar {{ font-size:30px; font-weight:800; letter-spacing:2px; }}
   .hero-ikon {{ font-size:44px; margin-top:6px; }}
 
-  .kutular {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }}
+  .kutular {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }}
   .kutu {{ background:#14181d; border-radius:18px; padding:14px; text-align:center; }}
   .kutu-ikon {{ font-size:30px; }}
   .kutu-deger {{ font-size:26px; font-weight:800; margin-top:2px; }}
   .kutu-ad {{ font-size:12px; color:#7d8b96; margin-top:2px; }}
 
+  .saatler {{ background:#14181d; border-radius:18px; padding:14px 16px;
+              margin-bottom:10px; line-height:1.9; font-size:15px; }}
+  .saatler b {{ color:#4ade80; }}
+
   h2 {{ font-size:17px; margin:20px 0 10px; color:#aebac4; }}
+  .grafik {{ background:#0c0f12; border-radius:18px; padding:10px 6px 4px; }}
   .serit {{ display:flex; gap:10px; overflow-x:auto; padding-bottom:6px;
             -webkit-overflow-scrolling:touch; }}
   .serit {{ scrollbar-width:none; }}
@@ -172,12 +227,12 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
   .tur {{ background:#1d4ed8; color:#fff; border-radius:8px; padding:1px 8px;
           font-size:12px; font-weight:700; }}
   .zaman {{ color:#7d8b96; font-size:13px; }}
-    .rozet {{ display:inline-block; background:#0e2a1a; color:#4ade80; border-radius:8px;
+  .rozet {{ display:inline-block; background:#0e2a1a; color:#4ade80; border-radius:8px;
             padding:2px 8px; font-size:11px; font-weight:700; margin-top:6px; }}
   .rozet-hero {{ background:rgba(0,0,0,.25); color:#fff; font-size:14px;
                  padding:6px 12px; border-radius:12px; margin-top:10px; }}
 </style></head><body>
-<div class="tarih">🐟 Balık — Finike · {bugun.strftime("%d.%m.%Y")}</div>
+<div class="tarih">🐟 Balık — Finike · {bugun.strftime("%d.%m.%Y")} · ⭐ Haftanın günü: {en_iyi_ad}</div>
 
 <div class="hero" style="background:{bugun_v['renk']}">
   <div class="hero-gun">BUGÜN · {gunler[bugun_v['t'].weekday()].upper()}</div>
@@ -202,7 +257,16 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
     <div class="kutu-ad">Ay</div></div>
 </div>
 
+<div class="saatler">
+  ⏰ <b>Majör beslenme:</b> {maj}<br>
+  🐟 <b>Minör:</b> {mnr}<br>
+  🌅 Gün doğumu {bugun_v['dogus']} · 🌇 batımı {bugun_v['batis']} — doğuştan sonraki ve batıştan önceki ~2 saat altın saatlerdir
+</div>
+
 <div class="sinyal" style="background:#14181d">🐟 <b>Bu ay beklenen:</b> {TURLER[bugun.month]}</div>
+
+<h2>📈 Haftanın seyri</h2>
+<div class="grafik">{grafik}</div>
 
 <h2>📅 Sonraki günler</h2>
 <div class="serit">{serit}</div>
