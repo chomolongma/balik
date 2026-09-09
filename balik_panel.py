@@ -196,7 +196,7 @@ def dalga_ciz(g, gorunur, mobil=False):
         b2 = tum_vakitler[(i2 + 1) % len(tum_vakitler)]
         orta = (a2 + ((b2 - a2) % 24) / 2) % 24
         x = x_koy(orta)
-        c += (f'<text x="{x:.0f}" y="{TABAN-8}" text-anchor="middle" fill="#4ade80" '
+        c += (f'<text x="{x:.0f}" y="{TABAN+40}" text-anchor="middle" fill="#4ade80" '
               f'font-size="{f_dip}" font-weight="800">{s2str(orta)}</text>')
     # Saat ekseni
     for saat in range(0, 25, eksen_adim):
@@ -220,7 +220,7 @@ def dalga_ciz(g, gorunur, mobil=False):
     snf = "dalga-m" if mobil else "dalga-d"
     snf2 = " secili" if gorunur else ""
     return (f'<div class="dalga {snf}{snf2}" id="dalga-{on_ek}{gid}">'
-            f'<svg viewBox="0 0 {GW} {GH+14}" style="width:100%;height:auto">{c}</svg></div>')
+            f'<svg viewBox="0 0 {GW} {GH+34}" style="width:100%;height:auto">{c}</svg></div>')
 
 dalgalar = "".join(dalga_ciz(g, i == 0) for i, g in enumerate(tum_gunler))
 dalgalar += "".join(dalga_ciz(g, i == 0, mobil=True) for i, g in enumerate(tum_gunler))
@@ -238,7 +238,7 @@ for i, g in enumerate(tum_gunler):
         f'<circle cx="{x:.0f}" cy="{y:.0f}" r="5" fill="{g["renk"]}"/>'
         f'<text x="{x:.0f}" y="{y-10:.0f}" text-anchor="middle" fill="{g["renk"]}" '
         f'font-size="13" font-weight="700">{g["skor"]}</text>'
-        f'<text x="{x:.0f}" y="{H-6}" text-anchor="middle" fill="#7d8b96" font-size="12">{gad}</text>')
+        f'<text x="{x:.0f}" y="{H-6}" text-anchor="middle" fill="#475569" font-size="12">{gad}</text>')
 grafik = (f'<svg viewBox="0 0 {W} {H}" style="width:100%;height:auto">'
           f'<polyline points="{" ".join(noktalar)}" fill="none" stroke="#334155" stroke-width="2"/>'
           + "".join(etiketler) + '</svg>')
