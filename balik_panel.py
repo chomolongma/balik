@@ -245,7 +245,8 @@ grafik = (f'<svg viewBox="0 0 {W} {H}" style="width:100%;height:auto">'
 
 # ================= SONRAKİ GÜNLER =================
 serit = ""
-for g in sonraki:
+for g in tum_gunler:
+    bugun_mu = g is bugun_v
     yildiz = "⭐ " if g is en_iyi else ""
     serit += f"""
     <div class="skart" data-gun="{g['t'].isoformat()}" data-ad="{gunler[g['t'].weekday()]} {g['t'].day:02d}.{g['t'].month:02d}" onclick="dalgaSec(this)" style="border-top:5px solid {g['renk']}; cursor:pointer">
@@ -373,8 +374,6 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
     <div class="kutu-ad">Ay</div></div>
 </div>
 
-<div class="sinyal" style="background:#14181d">🐟 <b>Bu ay beklenen:</b> {TURLER[bugun.month]}</div>
-
 <h2>📅 Sonraki günler</h2>
 <div class="serit">{serit}</div>
 
@@ -383,6 +382,8 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
 
 <h2>📈 Haftanın seyri</h2>
 <div class="grafik">{grafik}</div>
+
+<div class="sinyal" style="background:#14181d">🐟 <b>Bu ay beklenen:</b> {TURLER[bugun.month]}</div>
 
 <h2>📷 Taze kaynaklar</h2>
 {ig_html}
