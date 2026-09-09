@@ -149,6 +149,10 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
   h2 {{ font-size:17px; margin:20px 0 10px; color:#aebac4; }}
   .serit {{ display:flex; gap:10px; overflow-x:auto; padding-bottom:6px;
             -webkit-overflow-scrolling:touch; }}
+  .serit {{ scrollbar-width:none; }}
+  .serit::-webkit-scrollbar {{ display:none; }}
+  .igbar {{ scrollbar-width:none; }}
+  .igbar::-webkit-scrollbar {{ display:none; }}
   .skart {{ background:#14181d; border-radius:16px; padding:12px; min-width:112px;
             text-align:center; flex-shrink:0; }}
   .skart-gun {{ font-weight:700; font-size:14px; }}
