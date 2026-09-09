@@ -23,7 +23,8 @@ def videolari_getir(gun_siniri=14, en_fazla=8):
         try:
             xml = sayfa_getir(f"https://www.youtube.com/feeds/videos.xml?channel_id={kid}")
             kok = ET.fromstring(xml)
-        except Exception:
+        except Exception as hata:
+            print(f"UYARI @{kanal}: {type(hata).__name__}: {hata}")
             continue
         kanal_videolari = []
         for giris in kok.iter(ATOM + "entry"):
