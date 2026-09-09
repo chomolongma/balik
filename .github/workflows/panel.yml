@@ -17,7 +17,7 @@ jobs:
           python-version: "3.12"
       - run: mkdir site && CIKTI=site/index.html python3 balik_panel.py
         env:
-        YT_API_KEY: ${{ secrets.YT_API_KEY }}
+          YT_API_KEY: ${{ secrets.YT_API_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
