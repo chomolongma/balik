@@ -170,8 +170,9 @@ def dalga_ciz(g, gorunur):
         c += (f'<line x1="{x:.0f}" y1="{TABAN}" x2="{x:.0f}" y2="{TABAN+6}" stroke="#334155"/>'
               f'<text x="{x:.0f}" y="{TABAN+22}" text-anchor="middle" fill="#7d8b96" font-size="12">{saat:02d}</text>')
     c += f'<line x1="{GS}" y1="{TABAN}" x2="{GW-GS}" y2="{TABAN}" stroke="#334155" stroke-width="2"/>'
-    for ikon, sx in (("🌅", dogus_s), ("🌇", batis_s)):
-        c += f'<text x="{x_koy(sx):.0f}" y="{TAVAN-12}" text-anchor="middle" font-size="15">{ikon}</text>'
+    for hhmm, sx in ((g["dogus"], dogus_s), (g["batis"], batis_s)):
+        c += (f'<text x="{x_koy(sx):.0f}" y="{TAVAN-12}" text-anchor="middle" '
+              f'fill="#f59e0b" font-size="12" font-weight="700">{hhmm}</text>')
     if gorunur:  # ŞİMDİ çizgisi sadece bugünde anlamlı
         c += (f'<g id="simdi"><line x1="0" y1="{TAVAN-16}" x2="0" y2="{TABAN}" '
               f'stroke="#ef4444" stroke-width="3"/>'
@@ -334,6 +335,9 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
     <div class="kutu-ad">Ay</div></div>
 </div>
 
+<h2>📅 Sonraki günler</h2>
+<div class="serit">{serit}</div>
+
 <h2>⏰ Saatler — <span id="dalga-baslik">bugün</span></h2>
 <div class="grafik">{dalgalar}</div>
 <div class="saatler" style="font-size:15px">🎯 <b>Zirve: {ozet_vakit}</b></div>
@@ -342,9 +346,6 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
 
 <h2>📈 Haftanın seyri</h2>
 <div class="grafik">{grafik}</div>
-
-<h2>📅 Sonraki günler</h2>
-<div class="serit">{serit}</div>
 
 <h2>📷 Taze kaynaklar</h2>
 {ig_html}
