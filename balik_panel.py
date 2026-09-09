@@ -56,10 +56,14 @@ def gun_hesapla(i, tarih):
     skor -= dalga * 3
 
     basinc_yon = ""
+    basinc_bonus = False
     if i > 0 and basinclar[i] is not None and basinclar[i-1] is not None:
-        if basinclar[i] < basinclar[i-1] - 1:
-            skor += 0.5; basinc_yon = "▼"
-        elif basinclar[i] > basinclar[i-1] + 1:
+        fark = basinclar[i] - basinclar[i-1]
+        if fark < -3:
+            skor += 1.0; basinc_yon = "▼"; basinc_bonus = True
+        elif fark < -1:
+            skor += 0.5; basinc_yon = "▼"; basinc_bonus = True
+        elif fark > 1:
             basinc_yon = "▲"
 
     bonus, ay_ikon, ay_ad = ay_evre(t)
@@ -72,7 +76,7 @@ def gun_hesapla(i, tarih):
 
     return dict(t=t, ruzgar=ruzgar, dalga=dalga, ikon=HAVA_IKON.get(kod, "🌊"),
                 skor=skor, renk=renk, karar=karar,
-                basinc=basinc_yon, ay_ikon=ay_ikon, ay_ad=ay_ad)
+                basinc=basinc_yon, basinc_bonus=basinc_bonus, ay_ikon=ay_ikon, ay_ad=ay_ad)
 
 tum_gunler = [gun_hesapla(i, tarih) for i, tarih in enumerate(hava["daily"]["time"])]
 bugun_v = tum_gunler[0]
@@ -87,6 +91,7 @@ for g in sonraki:
       <div class="skart-ikon">{g['ikon']}</div>
       <div class="skart-skor" style="color:{g['renk']}">{g['skor']}</div>
       <div class="skart-detay">💨{g['ruzgar']:.0f}kn 🌊{g['dalga']:.1f}m</div>
+        {"<div class='rozet'>🎣 basınç avantajı</div>" if g['basinc_bonus'] else ""}
     </div>"""
 
 # --- Instagram şeridi ---
@@ -163,6 +168,10 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
   .tur {{ background:#1d4ed8; color:#fff; border-radius:8px; padding:1px 8px;
           font-size:12px; font-weight:700; }}
   .zaman {{ color:#7d8b96; font-size:13px; }}
+    .rozet {{ display:inline-block; background:#0e2a1a; color:#4ade80; border-radius:8px;
+            padding:2px 8px; font-size:11px; font-weight:700; margin-top:6px; }}
+  .rozet-hero {{ background:rgba(0,0,0,.25); color:#fff; font-size:14px;
+                 padding:6px 12px; border-radius:12px; margin-top:10px; }}
 </style></head><body>
 <div class="tarih">🐟 Balık — Finike · {bugun.strftime("%d.%m.%Y")}</div>
 
@@ -171,6 +180,7 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
   <div class="hero-skor">{bugun_v['skor']}</div>
   <div class="hero-karar">{'⚓ ' if bugun_v['skor']>=7 else ''}{bugun_v['karar']}</div>
   <div class="hero-ikon">{bugun_v['ikon']}</div>
+  {"<div class='rozet rozet-hero'>🎣 basınç avantajı — balık beslenmede</div>" if bugun_v['basinc_bonus'] else ""}
 </div>
 
 <div class="kutular">
