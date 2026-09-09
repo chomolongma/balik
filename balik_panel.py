@@ -343,10 +343,11 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
 
 <h2>⏰ Bugünün saatleri</h2>
 <div class="grafik">{saat_grafik}</div>
-<div class="saatler" style="font-size:13px">
-  <span style="color:#4ade80">■</span> Majör {maj_metin} ·
-  <span style="color:#60a5fa">■</span> Minör {mnr_metin} ·
-  🌅 {bugun_v['dogus']} · 🌇 {bugun_v['batis']}
+<div class="saatler" style="font-size:15px">
+  🎯 <b>Bugünün zirvesi: {ozet_vakit}</b><br>
+  <span style="font-size:13px; color:#7d8b96">Dalga yükseldikçe balık hareketi artar ·
+  🐟 büyük tepe = ana vakit · küçük kabartı = ikinci şans ·
+  açık kuşak = gündüz · <span style="color:#ef4444">|</span> şu an</span>
 </div>
 
 <div class="sinyal" style="background:#14181d; margin-top:10px">🐟 <b>Bu ay beklenen:</b> {TURLER[bugun.month]}</div>
