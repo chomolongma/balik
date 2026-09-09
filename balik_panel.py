@@ -152,9 +152,16 @@ def dalga_ciz(g, gorunur):
     yol = (f"M {x_koy(0):.1f},{TABAN} L " + " L ".join(nokta_list)
            + f" L {x_koy(24):.1f},{TABAN} Z")
 
-    c = (f'<rect x="{x_koy(dogus_s):.0f}" y="{TAVAN-6}" '
-         f'width="{x_koy(batis_s)-x_koy(dogus_s):.0f}" height="{TABAN-TAVAN+6}" '
-         f'fill="#1a2230" rx="8"/>'
+    gid_grad = f"sky-{g['t'].isoformat()}"
+    c = (f'<defs><linearGradient id="{gid_grad}" x1="0" x2="1" y1="0" y2="0">'
+         f'<stop offset="0%" stop-color="#0a1020"/>'
+         f'<stop offset="{dogus_s/24*100-2:.1f}%" stop-color="#0a1020"/>'
+         f'<stop offset="{dogus_s/24*100+2:.1f}%" stop-color="#2b3a52"/>'
+         f'<stop offset="{batis_s/24*100-2:.1f}%" stop-color="#2b3a52"/>'
+         f'<stop offset="{batis_s/24*100+2:.1f}%" stop-color="#0a1020"/>'
+         f'<stop offset="100%" stop-color="#0a1020"/></linearGradient></defs>'
+         f'<rect x="{GS}" y="{TAVAN-6}" width="{GW-2*GS}" height="{TABAN-TAVAN+6}" '
+         f'fill="url(#{gid_grad})" rx="8"/>'
          f'<path d="{yol}" fill="#16a34a" fill-opacity="0.35"/>'
          f'<path d="{yol}" fill="none" stroke="#4ade80" stroke-width="2.5"/>')
     for m in major_m:
@@ -165,6 +172,15 @@ def dalga_ciz(g, gorunur):
         x, y = x_koy(m), y_koy(aktivite(m))
         c += (f'<text x="{x:.0f}" y="{y-6:.0f}" text-anchor="middle" fill="#60a5fa" '
               f'font-size="11">{s2str(m)}</text>')
+    # Dip noktaları: ardışık vakitlerin ortası, aktivitenin en düşük anı
+    tum_vakitler = sorted(major_m + minor_m)
+    for i2 in range(len(tum_vakitler)):
+        a2 = tum_vakitler[i2]
+        b2 = tum_vakitler[(i2 + 1) % len(tum_vakitler)]
+        orta = (a2 + ((b2 - a2) % 24) / 2) % 24
+        x, y = x_koy(orta), y_koy(aktivite(orta))
+        c += (f'<text x="{x:.0f}" y="{y+16:.0f}" text-anchor="middle" fill="#64748b" '
+              f'font-size="10">{s2str(orta)}</text>')
     for saat in range(0, 25, 3):
         x = x_koy(saat)
         c += (f'<line x1="{x:.0f}" y1="{TABAN}" x2="{x:.0f}" y2="{TABAN+6}" stroke="#334155"/>'
