@@ -112,39 +112,91 @@ en_iyi_ad = "BUGÜN" if en_iyi is bugun_v else f"{gunler[en_iyi['t'].weekday()]}
 # --- Bugünün saat çizelgesi (solunar + altın saatler) ---
 majorler, minorler = solunar_pencereler(bugun_v["t"])
 
+def pencere_merkez(a, b):
+    return (a + ((b - a) % 24) / 2) % 24
+
+major_merkezler = [pencere_merkez(a, b) for a, b in majorler]
+minor_merkezler = [pencere_merkez(a, b) for a, b in minorler]
+
+def dairesel_fark(s, c):
+    f = abs(s - c) % 24
+    return min(f, 24 - f)
+
+def aktivite(s):
+    """0-1 arası balık hareketi tahmini: majör tepeler yüksek, minörler alçak."""
+    import math
+    a = 0.0
+    for c in major_merkezler:
+        a += 1.0 * math.exp(-(dairesel_fark(s, c) ** 2) / (2 * 1.3 ** 2))
+    for c in minor_merkezler:
+        a += 0.5 * math.exp(-(dairesel_fark(s, c) ** 2) / (2 * 0.9 ** 2))
+    return min(a, 1.0)
+
 def saat_cevir(hhmm):
     h, m = hhmm.split(":")
     return int(h) + int(m) / 60
 
-GW, GH, GS = 680, 118, 26
+GW, GH, GS = 680, 150, 26
+TABAN, TAVAN = 104, 30
 def x_koy(saat): return GS + saat / 24 * (GW - 2 * GS)
+def y_koy(a): return TABAN - a * (TABAN - TAVAN)
 
-def bant(a, b, renk, y, yuk):
-    parcalar = []
-    for (p, q) in ([(a, b)] if a <= b else [(a, 24), (0, b)]):
-        x1, x2 = x_koy(p), x_koy(q)
-        parcalar.append(f'<rect x="{x1:.0f}" y="{y}" width="{max(x2-x1,2):.0f}" '
-                        f'height="{yuk}" rx="5" fill="{renk}"/>')
-    return "".join(parcalar)
+dogus_s, batis_s = saat_cevir(bugun_v["dogus"]), saat_cevir(bugun_v["batis"])
+
+# Eğri noktaları (10 dakikalık adımlarla)
+nokta_list = []
+s = 0.0
+while s <= 24.001:
+    nokta_list.append(f"{x_koy(s):.1f},{y_koy(aktivite(s)):.1f}")
+    s += 1 / 6
+egri_yolu = (f"M {x_koy(0):.1f},{TABAN} L " + " L ".join(nokta_list)
+             + f" L {x_koy(24):.1f},{TABAN} Z")
 
 cizelge = ""
-for (a, b) in majorler:
-    cizelge += bant(a, b, "#16a34a", 34, 34)
-for (a, b) in minorler:
-    cizelge += bant(a, b, "#2563eb", 42, 18)
+# Gündüz kuşağı
+cizelge += (f'<rect x="{x_koy(dogus_s):.0f}" y="{TAVAN-6}" '
+            f'width="{x_koy(batis_s)-x_koy(dogus_s):.0f}" height="{TABAN-TAVAN+6}" '
+            f'fill="#1a2230" rx="8"/>')
+# Dalga (dolgu + çizgi)
+cizelge += (f'<path d="{egri_yolu}" fill="#16a34a" fill-opacity="0.35"/>'
+            f'<path d="{egri_yolu}" fill="none" stroke="#4ade80" stroke-width="2.5"/>')
+# Tepe etiketleri
+for c in major_merkezler:
+    x, y = x_koy(c), y_koy(aktivite(c))
+    cizelge += (f'<text x="{x:.0f}" y="{y-8:.0f}" text-anchor="middle" fill="#4ade80" '
+                f'font-size="13" font-weight="800">🐟 {s2str(c)}</text>')
+for c in minor_merkezler:
+    x, y = x_koy(c), y_koy(aktivite(c))
+    cizelge += (f'<text x="{x:.0f}" y="{y-6:.0f}" text-anchor="middle" fill="#60a5fa" '
+                f'font-size="11">{s2str(c)}</text>')
+# Saat ekseni
 for saat in range(0, 25, 3):
     x = x_koy(saat)
-    cizelge += (f'<line x1="{x:.0f}" y1="72" x2="{x:.0f}" y2="78" stroke="#334155"/>'
-                f'<text x="{x:.0f}" y="94" text-anchor="middle" fill="#7d8b96" font-size="12">{saat:02d}</text>')
-cizelge += f'<line x1="{GS}" y1="72" x2="{GW-GS}" y2="72" stroke="#334155" stroke-width="2"/>'
-for ikon, hhmm in (("🌅", bugun_v["dogus"]), ("🌇", bugun_v["batis"])):
-    x = x_koy(saat_cevir(hhmm))
-    cizelge += (f'<text x="{x:.0f}" y="24" text-anchor="middle" font-size="16">{ikon}</text>'
-                f'<line x1="{x:.0f}" y1="28" x2="{x:.0f}" y2="72" stroke="#7d8b96" stroke-dasharray="3,3"/>')
-saat_grafik = f'<svg viewBox="0 0 {GW} {GH}" style="width:100%;height:auto">{cizelge}</svg>'
+    cizelge += (f'<line x1="{x:.0f}" y1="{TABAN}" x2="{x:.0f}" y2="{TABAN+6}" stroke="#334155"/>'
+                f'<text x="{x:.0f}" y="{TABAN+22}" text-anchor="middle" fill="#7d8b96" font-size="12">{saat:02d}</text>')
+cizelge += f'<line x1="{GS}" y1="{TABAN}" x2="{GW-GS}" y2="{TABAN}" stroke="#334155" stroke-width="2"/>'
+# Güneş
+for ikon, sx in (("🌅", dogus_s), ("🌇", batis_s)):
+    cizelge += f'<text x="{x_koy(sx):.0f}" y="{TAVAN-12}" text-anchor="middle" font-size="15">{ikon}</text>'
+# ŞİMDİ çizgisi (JS canlı günceller)
+cizelge += (f'<g id="simdi"><line x1="0" y1="{TAVAN-16}" x2="0" y2="{TABAN}" '
+            f'stroke="#ef4444" stroke-width="3"/>'
+            f'<text x="0" y="{TABAN+40}" text-anchor="middle" fill="#ef4444" font-size="12" '
+            f'font-weight="800">ŞİMDİ</text></g>')
+saat_grafik = (f'<svg viewBox="0 0 {GW} {GH+14}" style="width:100%;height:auto">{cizelge}</svg>'
+               f'<script>function simdiGuncelle(){{var d=new Date();'
+               f'var s=d.getHours()+d.getMinutes()/60;var x={GS}+s/24*({GW}-2*{GS});'
+               f'var g=document.getElementById("simdi");'
+               f'g.setAttribute("transform","translate("+x+",0)");}}'
+               f'simdiGuncelle();setInterval(simdiGuncelle,60000);</script>')
 
-maj_metin = " & ".join(f"{s2str(a)}–{s2str(b)}" for a, b in majorler)
-mnr_metin = " & ".join(f"{s2str(a)}–{s2str(b)}" for a, b in minorler)
+# İnsan özeti: gündüze denk gelen ilk tepe, yoksa ilk tepe
+def ozet_sec():
+    for c in sorted(major_merkezler):
+        if dogus_s <= c <= batis_s:
+            return f"{s2str(c)} civarı 🌞"
+    return f"{s2str(sorted(major_merkezler)[0])} civarı 🌙"
+ozet_vakit = ozet_sec()
 
 # --- Haftalık grafik ---
 W, H, SOL, UST = 680, 150, 30, 16
