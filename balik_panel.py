@@ -3,6 +3,11 @@ from balik_sinyal import sinyalleri_getir
 from balik_youtube import videolari_getir
 
 LAT, LON = 36.30, 30.15  # Finike
+NOKTALAR = {
+    "Kekova":    (36.15, 29.85),
+    "Finike":    (36.30, 30.15),
+    "Beşadalar": (36.20, 30.55),
+}
 
 INSTAGRAM = {
     "Çağdaş Özsarı":  "cagdasozsari",
@@ -22,7 +27,26 @@ deniz = getir(f"https://marine-api.open-meteo.com/v1/marine?latitude={LAT}&longi
               "&daily=wave_height_max&current=sea_surface_temperature&timezone=auto")
 
 su = deniz["current"]["sea_surface_temperature"]
+# Sahanın üç noktasından bugünün azami rüzgarı
+saha_ruzgar = {}
+for ad, (nlat, nlon) in NOKTALAR.items():
+    try:
+        nv = getir(f"https://api.open-meteo.com/v1/forecast?latitude={nlat}&longitude={nlon}"
+                   "&daily=wind_speed_10m_max&timezone=auto&forecast_days=1")
+        saha_ruzgar[ad] = nv["daily"]["wind_speed_10m_max"][0] / 1.852
+    except Exception as hata:
+        print(f"UYARI saha {ad}: {type(hata).__name__}: {hata}")
 
+if saha_ruzgar:
+    degerler = list(saha_ruzgar.values())
+    saha_fark = max(degerler) - min(degerler)
+    saha_satir = " · ".join(f"{ad} <b>{kn:.0f} kn</b>" for ad, kn in saha_ruzgar.items())
+    if saha_fark >= 5:
+        saha_satir += ' <span style="color:#f59e0b">— bölgeye göre değişken!</span>'
+    saha_html = f'<div class="sinyal" style="background:#14181d">🧭 {saha_satir}</div>'
+else:
+    saha_html = ""
+    
 def ay_gunu(t):
     return ((t - datetime.date(2000, 1, 6)).days) % 29.53
 
@@ -373,6 +397,8 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
     <div class="kutu-deger" style="font-size:18px">{bugun_v['ay_ad']}</div>
     <div class="kutu-ad">Ay</div></div>
 </div>
+
+{saha_html}
 
 <h2>📅 Sonraki günler</h2>
 <div class="serit">{serit}</div>
