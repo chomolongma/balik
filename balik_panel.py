@@ -451,6 +451,7 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
   .rozet-hero {{ background:rgba(0,0,0,.25); color:#fff; font-size:14px;
                  padding:6px 12px; border-radius:12px; margin-top:10px; }}
 </style></head><body>
+
 <div class="tarih">🐟 Balık — Finike · {bugun.strftime("%d.%m.%Y")} · ⭐ Haftanın günü: {en_iyi_ad}</div>
 
 {ust_bloklar}
@@ -464,7 +465,8 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
 <h2>📈 Haftanın seyri</h2>
 <div class="grafik">{grafik}</div>
 
-<div class="sinyal" style="background:#14181d">🐟 <b>Bu ay beklenen:</b> {TURLER[bugun.month]}</div>
+<h2>📈 u ay beklenen</h2>
+<div class="sinyal" style="background:#14181d">{TURLER[bugun.month]}</div>
 
 <h2>📷 Taze kaynaklar</h2>
 {ig_html}
