@@ -1,4 +1,4 @@
-import json, urllib.request, datetime, webbrowser, os
+import json, urllib.request, datetime, webbrowser, os, math
 from balik_sinyal import sinyalleri_getir
 from balik_youtube import videolari_getir
 
@@ -34,7 +34,6 @@ def ay_evre(t):
     return 0.0, "🌗", "Son yarı"
 
 def s2str(saat):
-    """Ondalık saati '06:40' biçimine çevir."""
     saat %= 24
     h = int(saat)
     m = int(round((saat - h) * 60))
@@ -42,7 +41,6 @@ def s2str(saat):
     return f"{h:02d}:{m:02d}"
 
 def solunar_pencereler(t):
-    """Majör (2 saat) ve minör (1 saat) pencereleri saat aralığı olarak döndür."""
     yas = ay_gunu(t)
     transit = (12.0 + yas * 0.813) % 24
     dip = (transit + 12) % 24
@@ -105,14 +103,10 @@ tum_gunler = [gun_hesapla(i, tarih) for i, tarih in enumerate(hava["daily"]["tim
 bugun_v = tum_gunler[0]
 sonraki = tum_gunler[1:]
 
-# --- Haftanın günü ---
 en_iyi = max(tum_gunler, key=lambda g: g["skor"])
 en_iyi_ad = "BUGÜN" if en_iyi is bugun_v else f"{gunler[en_iyi['t'].weekday()]} {en_iyi['t'].day:02d}.{en_iyi['t'].month:02d}"
 
-# --- Bugünün saat çizelgesi (solunar + altın saatler) ---
-
-import math
-
+# ================= SAAT DALGASI =================
 def pencere_merkez(a, b):
     return (a + ((b - a) % 24) / 2) % 24
 
@@ -124,12 +118,21 @@ def saat_cevir(hhmm):
     h, m = hhmm.split(":")
     return int(h) + int(m) / 60
 
-GW, GH, GS = 680, 150, 26
-TABAN, TAVAN = 104, 30
-def x_koy(saat): return GS + saat / 24 * (GW - 2 * GS)
-def y_koy(a): return TABAN - a * (TABAN - TAVAN)
+def dalga_ciz(g, gorunur, mobil=False):
+    if mobil:
+        GW, GH, GS = 390, 168, 16
+        TABAN, TAVAN = 112, 34
+        f_tepe, f_dip, f_eksen, f_gunes = 15, 14, 12, 13
+        eksen_adim = 6
+    else:
+        GW, GH, GS = 680, 150, 26
+        TABAN, TAVAN = 104, 30
+        f_tepe, f_dip, f_eksen, f_gunes = 13, 13, 12, 12
+        eksen_adim = 3
 
-def dalga_ciz(g, gorunur):
+    def x_koy(saat): return GS + saat / 24 * (GW - 2 * GS)
+    def y_koy(a): return TABAN - a * (TABAN - TAVAN)
+
     majorler, minorler = solunar_pencereler(g["t"])
     major_m = [pencere_merkez(a, b) for a, b in majorler]
     minor_m = [pencere_merkez(a, b) for a, b in minorler]
@@ -152,68 +155,77 @@ def dalga_ciz(g, gorunur):
     yol = (f"M {x_koy(0):.1f},{TABAN} L " + " L ".join(nokta_list)
            + f" L {x_koy(24):.1f},{TABAN} Z")
 
-    gid_grad = f"sky-{g['t'].isoformat()}"
-    c = (f'<defs><linearGradient id="{gid_grad}" x1="0" x2="1" y1="0" y2="0">'
+    gid = g["t"].isoformat()
+    on_ek = "m-" if mobil else ""
+    sky_id = f"sky-{on_ek}{gid}"
+    verim_id = f"verim-{on_ek}{gid}"
+
+    # Gökyüzü: gece koyu, gündüz açık, tan geçişleri yumuşak
+    c = (f'<defs><linearGradient id="{sky_id}" x1="0" x2="1" y1="0" y2="0">'
          f'<stop offset="0%" stop-color="#0a1020"/>'
          f'<stop offset="{dogus_s/24*100-2:.1f}%" stop-color="#0a1020"/>'
          f'<stop offset="{dogus_s/24*100+2:.1f}%" stop-color="#2b3a52"/>'
          f'<stop offset="{batis_s/24*100-2:.1f}%" stop-color="#2b3a52"/>'
          f'<stop offset="{batis_s/24*100+2:.1f}%" stop-color="#0a1020"/>'
-         f'<stop offset="100%" stop-color="#0a1020"/></linearGradient></defs>'
-         f'<rect x="{GS}" y="{TAVAN-6}" width="{GW-2*GS}" height="{TABAN-TAVAN+6}" '
-         f'fill="url(#{gid_grad})" rx="8"/>'
-         f'<defs><linearGradient id="verim-{gid_grad}" x1="0" x2="0" y1="0" y2="1">'
+         f'<stop offset="100%" stop-color="#0a1020"/></linearGradient>'
+         # Verim: tepe yeşil, orta sarı, dip kızıl
+         f'<linearGradient id="{verim_id}" x1="0" x2="0" y1="0" y2="1">'
          f'<stop offset="0%" stop-color="#22c55e" stop-opacity="0.85"/>'
          f'<stop offset="45%" stop-color="#eab308" stop-opacity="0.55"/>'
          f'<stop offset="100%" stop-color="#7f1d1d" stop-opacity="0.45"/>'
          f'</linearGradient></defs>'
-         f'<path d="{yol}" fill="url(#verim-{gid_grad})"/>'
+         f'<rect x="{GS}" y="{TAVAN-6}" width="{GW-2*GS}" height="{TABAN-TAVAN+6}" '
+         f'fill="url(#{sky_id})" rx="8"/>'
+         f'<path d="{yol}" fill="url(#{verim_id})"/>'
          f'<path d="{yol}" fill="none" stroke="#4ade80" stroke-width="2.5"/>')
+
+    # Tepe etiketleri (majör)
     for m in major_m:
         x, y = x_koy(m), y_koy(aktivite(m))
         c += (f'<text x="{x:.0f}" y="{y-8:.0f}" text-anchor="middle" fill="#4ade80" '
-              f'font-size="13" font-weight="800">🐟 {s2str(m)}</text>')
+              f'font-size="{f_tepe}" font-weight="800">🐟 {s2str(m)}</text>')
+    # Kabartı etiketleri (minör)
     for m in minor_m:
         x, y = x_koy(m), y_koy(aktivite(m))
         c += (f'<text x="{x:.0f}" y="{y-6:.0f}" text-anchor="middle" fill="#60a5fa" '
-              f'font-size="11">{s2str(m)}</text>')
-    # Dip noktaları: ardışık vakitlerin ortası, aktivitenin en düşük anı
+              f'font-size="{f_tepe}" font-weight="700">{s2str(m)}</text>')
+    # Dip etiketleri: grafiğin iç tabanında, tepe fontuyla aynı boy/renk
     tum_vakitler = sorted(major_m + minor_m)
     for i2 in range(len(tum_vakitler)):
         a2 = tum_vakitler[i2]
         b2 = tum_vakitler[(i2 + 1) % len(tum_vakitler)]
         orta = (a2 + ((b2 - a2) % 24) / 2) % 24
-        x, y = x_koy(orta), y_koy(aktivite(orta))
-        c += (f'<text x="{x:.0f}" y="{TABAN-8:.0f}" text-anchor="middle" fill="#4ade80" '
-              f'font-size="13" font-weight="800">{s2str(orta)}</text>')
-    for saat in range(0, 25, 3):
+        x = x_koy(orta)
+        c += (f'<text x="{x:.0f}" y="{TABAN-8}" text-anchor="middle" fill="#4ade80" '
+              f'font-size="{f_dip}" font-weight="800">{s2str(orta)}</text>')
+    # Saat ekseni
+    for saat in range(0, 25, eksen_adim):
         x = x_koy(saat)
         c += (f'<line x1="{x:.0f}" y1="{TABAN}" x2="{x:.0f}" y2="{TABAN+6}" stroke="#334155"/>'
-              f'<text x="{x:.0f}" y="{TABAN+22}" text-anchor="middle" fill="#7d8b96" font-size="12">{saat:02d}</text>')
+              f'<text x="{x:.0f}" y="{TABAN+22}" text-anchor="middle" fill="#7d8b96" '
+              f'font-size="{f_eksen}">{saat:02d}</text>')
     c += f'<line x1="{GS}" y1="{TABAN}" x2="{GW-GS}" y2="{TABAN}" stroke="#334155" stroke-width="2"/>'
+    # Doğuş/batış saatleri (turuncu)
     for hhmm, sx in ((g["dogus"], dogus_s), (g["batis"], batis_s)):
         c += (f'<text x="{x_koy(sx):.0f}" y="{TAVAN-12}" text-anchor="middle" '
-              f'fill="#f59e0b" font-size="12" font-weight="700">{hhmm}</text>')
-    if gorunur:  # ŞİMDİ çizgisi sadece bugünde anlamlı
-        c += (f'<g id="simdi"><line x1="0" y1="{TAVAN-16}" x2="0" y2="{TABAN}" '
+              f'fill="#f59e0b" font-size="{f_gunes}" font-weight="700">{hhmm}</text>')
+    # ŞİMDİ çizgisi (sadece bugün; JS canlı taşır)
+    if gorunur:
+        simdi_id = "simdi-m" if mobil else "simdi"
+        c += (f'<g id="{simdi_id}"><line x1="0" y1="{TAVAN-16}" x2="0" y2="{TABAN}" '
               f'stroke="#ef4444" stroke-width="3"/>'
-              f'<text x="0" y="{TABAN+40}" text-anchor="middle" fill="#ef4444" font-size="12" '
-              f'font-weight="800">ŞİMDİ</text></g>')
+              f'<text x="0" y="{TAVAN-22}" text-anchor="middle" fill="#ef4444" '
+              f'font-size="12" font-weight="800">ŞİMDİ</text></g>')
 
-    gid = g["t"].isoformat()
-    stil = "" if gorunur else "display:none"
-    return (f'<div class="dalga" id="dalga-{gid}" style="{stil}">'
+    snf = "dalga-m" if mobil else "dalga-d"
+    snf2 = " secili" if gorunur else ""
+    return (f'<div class="dalga {snf}{snf2}" id="dalga-{on_ek}{gid}">'
             f'<svg viewBox="0 0 {GW} {GH+14}" style="width:100%;height:auto">{c}</svg></div>')
 
 dalgalar = "".join(dalga_ciz(g, i == 0) for i, g in enumerate(tum_gunler))
+dalgalar += "".join(dalga_ciz(g, i == 0, mobil=True) for i, g in enumerate(tum_gunler))
 
-majorler0, _ = solunar_pencereler(bugun_v["t"])
-major_m0 = sorted(pencere_merkez(a, b) for a, b in majorler0)
-d0, b0 = saat_cevir(bugun_v["dogus"]), saat_cevir(bugun_v["batis"])
-gunduz = [m for m in major_m0 if d0 <= m <= b0]
-ozet_vakit = f"{s2str(gunduz[0])} civarı 🌞" if gunduz else f"{s2str(major_m0[0])} civarı 🌙"
-
-# --- Haftalık grafik ---
+# ================= HAFTALIK GRAFİK =================
 W, H, SOL, UST = 680, 150, 30, 16
 adim = (W - 2*SOL) / (len(tum_gunler) - 1)
 noktalar, etiketler = [], []
@@ -231,7 +243,7 @@ grafik = (f'<svg viewBox="0 0 {W} {H}" style="width:100%;height:auto">'
           f'<polyline points="{" ".join(noktalar)}" fill="none" stroke="#334155" stroke-width="2"/>'
           + "".join(etiketler) + '</svg>')
 
-# --- Sonraki günler şeridi ---
+# ================= SONRAKİ GÜNLER =================
 serit = ""
 for g in sonraki:
     yildiz = "⭐ " if g is en_iyi else ""
@@ -244,7 +256,7 @@ for g in sonraki:
       {"<div class='rozet'>🎣 basınç avantajı</div>" if g['basinc_bonus'] else ""}
     </div>"""
 
-# --- Instagram şeridi ---
+# ================= INSTAGRAM =================
 ig_linkler, ig_urller = [], []
 for isim, hesap in INSTAGRAM.items():
     url = f"https://www.instagram.com/{hesap}/"
@@ -255,7 +267,7 @@ ig_html = (f'<div class="igbar">{"".join(ig_linkler)}'
            f'<button class="ig igbtn" onclick="[{js_liste}].forEach(u=>window.open(u))">'
            f'⚡ Hepsini aç</button></div>')
 
-# --- YouTube ---
+# ================= YOUTUBE =================
 yt_html = ""
 for yas, kanal, turler, baslik in videolari_getir():
     ne_zaman = "bugün" if yas == 0 else ("dün" if yas == 1 else f"{yas} gün önce")
@@ -265,7 +277,7 @@ for yas, kanal, turler, baslik in videolari_getir():
 if not yt_html:
     yt_html = '<div class="sinyal">Son 14 günde video yok.</div>'
 
-# --- Basın ---
+# ================= BASIN =================
 sinyal_html = ""
 for yas, turler, baslik in sinyalleri_getir():
     ne_zaman = "bugün" if yas == 0 else ("dün" if yas == 1 else f"{yas} gün önce")
@@ -274,6 +286,7 @@ for yas, turler, baslik in sinyalleri_getir():
 if not sinyal_html:
     sinyal_html = '<div class="sinyal">Son 14 günde basın sinyali yok.</div>'
 
+# ================= SAYFA =================
 bugun = datetime.date.today()
 html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -296,14 +309,18 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
   .kutu-deger {{ font-size:26px; font-weight:800; margin-top:2px; }}
   .kutu-ad {{ font-size:12px; color:#7d8b96; margin-top:2px; }}
 
-  .saatler {{ background:#14181d; border-radius:18px; padding:12px 16px;
-              margin-top:8px; line-height:1.8; }}
-
   h2 {{ font-size:17px; margin:20px 0 10px; color:#aebac4; }}
   .grafik {{ background:#0c0f12; border-radius:18px; padding:10px 6px 4px; }}
+
+  .dalga {{ display:none; }}
+  .dalga-d.secili {{ display:block; }}
+  @media (max-width: 600px) {{
+    .dalga-d.secili {{ display:none; }}
+    .dalga-m.secili {{ display:block; }}
+  }}
+
   .serit {{ display:flex; gap:10px; overflow-x:auto; padding-bottom:6px;
-            -webkit-overflow-scrolling:touch; }}
-  .serit {{ scrollbar-width:none; }}
+            -webkit-overflow-scrolling:touch; scrollbar-width:none; }}
   .serit::-webkit-scrollbar {{ display:none; }}
   .skart {{ background:#14181d; border-radius:16px; padding:12px; min-width:112px;
             text-align:center; flex-shrink:0; }}
@@ -356,14 +373,13 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
     <div class="kutu-ad">Ay</div></div>
 </div>
 
+<div class="sinyal" style="background:#14181d">🐟 <b>Bu ay beklenen:</b> {TURLER[bugun.month]}</div>
+
 <h2>📅 Sonraki günler</h2>
 <div class="serit">{serit}</div>
 
 <h2>⏰ Saatler — <span id="dalga-baslik">bugün</span></h2>
 <div class="grafik">{dalgalar}</div>
-<div class="saatler" style="font-size:15px">🎯 <b>Zirve: {ozet_vakit}</b></div>
-
-<div class="sinyal" style="background:#14181d; margin-top:10px">🐟 <b>Bu ay beklenen:</b> {TURLER[bugun.month]}</div>
 
 <h2>📈 Haftanın seyri</h2>
 <div class="grafik">{grafik}</div>
@@ -376,14 +392,27 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
 
 <h2>📰 Basın sinyalleri</h2>
 {sinyal_html}
+
 <script>
 function dalgaSec(kart) {{
-  document.querySelectorAll('.dalga').forEach(d => d.style.display = 'none');
-  document.getElementById('dalga-' + kart.dataset.gun).style.display = '';
+  document.querySelectorAll('.dalga').forEach(function(d) {{ d.classList.remove('secili'); }});
+  var g = kart.dataset.gun;
+  document.getElementById('dalga-' + g).classList.add('secili');
+  document.getElementById('dalga-m-' + g).classList.add('secili');
   document.getElementById('dalga-baslik').textContent = kart.dataset.ad;
-  document.querySelectorAll('.skart').forEach(k => k.style.outline = '');
+  document.querySelectorAll('.skart').forEach(function(k) {{ k.style.outline = ''; }});
   kart.style.outline = '2px solid #4ade80';
 }}
+function simdiGuncelle() {{
+  var d = new Date();
+  var s = d.getHours() + d.getMinutes() / 60;
+  var gd = document.getElementById('simdi');
+  var gm = document.getElementById('simdi-m');
+  if (gd) gd.setAttribute('transform', 'translate(' + (26 + s / 24 * (680 - 52)) + ',0)');
+  if (gm) gm.setAttribute('transform', 'translate(' + (16 + s / 24 * (390 - 32)) + ',0)');
+}}
+simdiGuncelle();
+setInterval(simdiGuncelle, 60000);
 </script>
 </body></html>"""
 
