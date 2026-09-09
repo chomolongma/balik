@@ -2,12 +2,17 @@ import json, urllib.request, datetime, webbrowser, os, math
 from balik_sinyal import sinyalleri_getir
 from balik_youtube import videolari_getir
 
-LAT, LON = 36.30, 30.15  # Finike
+LAT, LON = 36.30, 30.15  # Finike (liman / kalkış noktası)
+
 NOKTALAR = {
     "Kekova":    (36.15, 29.85),
     "Finike":    (36.30, 30.15),
     "Beşadalar": (36.20, 30.55),
 }
+
+# Sahanın herhangi bir noktası bu eşiği geçerse: ek ceza + kırmızı uyarı
+SAHA_RUZGAR_ESIK = 16   # knot
+SAHA_DALGA_ESIK  = 0.8  # metre
 
 INSTAGRAM = {
     "Çağdaş Özsarı":  "cagdasozsari",
@@ -27,26 +32,29 @@ deniz = getir(f"https://marine-api.open-meteo.com/v1/marine?latitude={LAT}&longi
               "&daily=wave_height_max&current=sea_surface_temperature&timezone=auto")
 
 su = deniz["current"]["sea_surface_temperature"]
-# Sahanın üç noktasından bugünün azami rüzgarı
-saha_ruzgar = {}
-for ad, (nlat, nlon) in NOKTALAR.items():
-    try:
-        nv = getir(f"https://api.open-meteo.com/v1/forecast?latitude={nlat}&longitude={nlon}"
-                   "&daily=wind_speed_10m_max&timezone=auto&forecast_days=1")
-        saha_ruzgar[ad] = nv["daily"]["wind_speed_10m_max"][0] / 1.852
-    except Exception as hata:
-        print(f"UYARI saha {ad}: {type(hata).__name__}: {hata}")
 
-if saha_ruzgar:
-    degerler = list(saha_ruzgar.values())
-    saha_fark = max(degerler) - min(degerler)
-    saha_satir = " · ".join(f"{ad} <b>{kn:.0f} kn</b>" for ad, kn in saha_ruzgar.items())
-    if saha_fark >= 5:
-        saha_satir += ' <span style="color:#f59e0b">— bölgeye göre değişken!</span>'
-    saha_html = f'<div class="sinyal" style="background:#14181d">🧭 {saha_satir}</div>'
-else:
-    saha_html = ""
-    
+def nokta_getir(nlat, nlon):
+    hv = getir(f"https://api.open-meteo.com/v1/forecast?latitude={nlat}&longitude={nlon}"
+               "&daily=wind_speed_10m_max&timezone=auto")
+    dv = getir(f"https://marine-api.open-meteo.com/v1/marine?latitude={nlat}&longitude={nlon}"
+               "&daily=wave_height_max&timezone=auto")
+    return hv["daily"]["wind_speed_10m_max"], dv["daily"]["wave_height_max"]
+
+# 3 noktanın 7 günlük rüzgar (knot) ve dalga (m) dizileri
+RUZGAR_NOKTA = {"Finike": [w / 1.852 for w in hava["daily"]["wind_speed_10m_max"]]}
+DALGA_NOKTA  = {"Finike": deniz["daily"]["wave_height_max"]}
+for ad, (nlat, nlon) in NOKTALAR.items():
+    if ad == "Finike":
+        continue
+    try:
+        w_list, d_list = nokta_getir(nlat, nlon)
+        RUZGAR_NOKTA[ad] = [w / 1.852 for w in w_list]
+        DALGA_NOKTA[ad] = d_list
+    except Exception as hata:
+        print(f"UYARI nokta {ad}: {type(hata).__name__}: {hata}")
+        RUZGAR_NOKTA[ad] = RUZGAR_NOKTA["Finike"]
+        DALGA_NOKTA[ad] = DALGA_NOKTA["Finike"]
+
 def ay_gunu(t):
     return ((t - datetime.date(2000, 1, 6)).days) % 29.53
 
@@ -87,18 +95,35 @@ gunler = ["Pzt","Sal","Çar","Per","Cum","Cmt","Paz"]
 basinclar = hava["daily"]["surface_pressure_mean"]
 
 def gun_hesapla(i, tarih):
-    ruzgar = hava["daily"]["wind_speed_10m_max"][i] / 1.852
-    dalga = deniz["daily"]["wave_height_max"][i]
+    ruzgar_liste = [RUZGAR_NOKTA[ad][i] for ad in NOKTALAR]
+    dalga_liste = [DALGA_NOKTA[ad][i] for ad in NOKTALAR]
+    ruzgar = sum(ruzgar_liste) / len(ruzgar_liste)
+    dalga = sum(dalga_liste) / len(dalga_liste)
+    ruzgar_max, ruzgar_max_ad = max((v, ad) for v, ad in zip(ruzgar_liste, NOKTALAR))
+    dalga_max, dalga_max_ad = max((v, ad) for v, ad in zip(dalga_liste, NOKTALAR))
+
     kod = hava["daily"]["weather_code"][i]
     t = datetime.date.fromisoformat(tarih)
 
     skor = 10.0
     if ruzgar > 5:
-        skor -= (ruzgar - 5) * 0.45          # 5 kn'dan itibaren kademeli
+        skor -= (ruzgar - 5) * 0.45
     if ruzgar > 14:
-        skor -= (ruzgar - 14) * 0.5          # sertleşince ek eğim
+        skor -= (ruzgar - 14) * 0.5
     if dalga > 0.2:
-        skor -= (dalga - 0.2) * 5            # dalga cezası büyüdü
+        skor -= (dalga - 0.2) * 5
+
+    saha_riskli = False
+    saha_not = ""
+    if ruzgar_max > SAHA_RUZGAR_ESIK:
+        skor -= (ruzgar_max - SAHA_RUZGAR_ESIK) * 0.3
+        saha_riskli = True
+        saha_not = f"{ruzgar_max_ad}: {ruzgar_max:.0f} kn"
+    if dalga_max > SAHA_DALGA_ESIK:
+        skor -= (dalga_max - SAHA_DALGA_ESIK) * 2
+        saha_riskli = True
+        ek = f"{dalga_max_ad}: {dalga_max:.1f} m"
+        saha_not = f"{saha_not} · {ek}" if saha_not else ek
 
     basinc_yon = ""
     basinc_bonus = False
@@ -115,9 +140,9 @@ def gun_hesapla(i, tarih):
     ay_b, ay_ikon, ay_ad = ay_evre(t)
     bonus_toplam += ay_b
 
-    skor = min(skor, 9.0) + min(bonus_toplam, 1.5)   # bonus tavana taşıyamaz, sadece taçlandırır
+    skor = min(skor, 9.0) + min(bonus_toplam, 1.5)
     if not (ruzgar < 6 and dalga <= 0.2):
-        skor = min(skor, 9.4)                         # mükemmellik payı
+        skor = min(skor, 9.4)
     skor = max(0, min(10, round(skor, 1)))
 
     if skor >= 7:   renk, karar = "#16a34a", "ÇIKILIR"
@@ -127,17 +152,62 @@ def gun_hesapla(i, tarih):
     dogus = hava["daily"]["sunrise"][i][-5:]
     batis = hava["daily"]["sunset"][i][-5:]
 
-    return dict(t=t, ruzgar=ruzgar, dalga=dalga, ikon=HAVA_IKON.get(kod, "🌊"),
+    return dict(i=i, t=t, ruzgar=ruzgar, dalga=dalga, ikon=HAVA_IKON.get(kod, "🌊"),
                 skor=skor, renk=renk, karar=karar,
                 basinc=basinc_yon, basinc_bonus=basinc_bonus,
-                ay_ikon=ay_ikon, ay_ad=ay_ad, dogus=dogus, batis=batis)
+                ay_ikon=ay_ikon, ay_ad=ay_ad, dogus=dogus, batis=batis,
+                saha_riskli=saha_riskli, saha_not=saha_not)
 
 tum_gunler = [gun_hesapla(i, tarih) for i, tarih in enumerate(hava["daily"]["time"])]
 bugun_v = tum_gunler[0]
-sonraki = tum_gunler[1:]
 
 en_iyi = max(tum_gunler, key=lambda g: g["skor"])
 en_iyi_ad = "BUGÜN" if en_iyi is bugun_v else f"{gunler[en_iyi['t'].weekday()]} {en_iyi['t'].day:02d}.{en_iyi['t'].month:02d}"
+
+# ================= ÜST BLOK (her gün için ayrı, JS seçileni gösterir) =================
+def ust_blok_ciz(g):
+    bugun_mu = g is bugun_v
+    gid = g["t"].isoformat()
+    baslik = f"BUGÜN · {gunler[g['t'].weekday()].upper()}" if bugun_mu \
+        else f"{gunler[g['t'].weekday()].upper()} · {g['t'].day:02d}.{g['t'].month:02d}"
+    rozetler = ""
+    if g["basinc_bonus"]:
+        rozetler += "<div class='rozet rozet-hero'>🎣 basınç avantajı — balık beslenmede</div>"
+    if g["saha_riskli"]:
+        rozetler += f"<div class='rozet rozet-hero' style='background:rgba(0,0,0,.45);color:#fca5a5'>⚠️ {g['saha_not']}</div>"
+
+    saha_satir = " · ".join(f"{ad} <b>{RUZGAR_NOKTA[ad][g['i']]:.0f} kn</b>" for ad in NOKTALAR)
+    if g["saha_riskli"]:
+        saha_satir += f' <span style="color:#fca5a5">— {g["saha_not"]}</span>'
+
+    secili = " secili" if bugun_mu else ""
+    return f"""
+<div class="gunblok{secili}" id="gunblok-{gid}">
+  <div class="hero" style="background:{g['renk']}">
+    <div class="hero-gun">{baslik}</div>
+    <div class="hero-skor">{g['skor']}</div>
+    <div class="hero-karar">{'⚓ ' if g['skor'] >= 7 else ''}{g['karar']}</div>
+    <div class="hero-ikon">{g['ikon']}</div>
+    {rozetler}
+  </div>
+  <div class="kutular">
+    <div class="kutu"><div class="kutu-ikon">💨</div>
+      <div class="kutu-deger">{g['ruzgar']:.1f} kn</div>
+      <div class="kutu-ad">Rüzgar {g['basinc']}</div></div>
+    <div class="kutu"><div class="kutu-ikon">🌊</div>
+      <div class="kutu-deger">{g['dalga']:.1f} m</div>
+      <div class="kutu-ad">Dalga</div></div>
+    <div class="kutu"><div class="kutu-ikon">🌡</div>
+      <div class="kutu-deger">{su} °C</div>
+      <div class="kutu-ad">Deniz suyu</div></div>
+    <div class="kutu"><div class="kutu-ikon">{g['ay_ikon']}</div>
+      <div class="kutu-deger" style="font-size:18px">{g['ay_ad']}</div>
+      <div class="kutu-ad">Ay</div></div>
+  </div>
+  <div class="sinyal" style="background:#14181d">🧭 {saha_satir}</div>
+</div>"""
+
+ust_bloklar = "".join(ust_blok_ciz(g) for g in tum_gunler)
 
 # ================= SAAT DALGASI =================
 def pencere_merkez(a, b):
@@ -193,7 +263,6 @@ def dalga_ciz(g, gorunur, mobil=False):
     sky_id = f"sky-{on_ek}{gid}"
     verim_id = f"verim-{on_ek}{gid}"
 
-    # Gökyüzü: gece koyu, gündüz açık, tan geçişleri yumuşak
     c = (f'<defs><linearGradient id="{sky_id}" x1="0" x2="1" y1="0" y2="0">'
          f'<stop offset="0%" stop-color="#0a1020"/>'
          f'<stop offset="{dogus_s/24*100-2:.1f}%" stop-color="#0a1020"/>'
@@ -201,7 +270,6 @@ def dalga_ciz(g, gorunur, mobil=False):
          f'<stop offset="{batis_s/24*100-2:.1f}%" stop-color="#2b3a52"/>'
          f'<stop offset="{batis_s/24*100+2:.1f}%" stop-color="#0a1020"/>'
          f'<stop offset="100%" stop-color="#0a1020"/></linearGradient>'
-         # Verim: tepe yeşil, orta sarı, dip kızıl
          f'<linearGradient id="{verim_id}" x1="0" x2="0" y1="0" y2="1">'
          f'<stop offset="0%" stop-color="#22c55e" stop-opacity="0.85"/>'
          f'<stop offset="45%" stop-color="#eab308" stop-opacity="0.55"/>'
@@ -212,17 +280,14 @@ def dalga_ciz(g, gorunur, mobil=False):
          f'<path d="{yol}" fill="url(#{verim_id})"/>'
          f'<path d="{yol}" fill="none" stroke="#4ade80" stroke-width="2.5"/>')
 
-    # Tepe etiketleri (majör)
     for m in major_m:
         x, y = x_koy(m), y_koy(aktivite(m))
         c += (f'<text x="{x:.0f}" y="{y-8:.0f}" text-anchor="middle" fill="#4ade80" '
               f'font-size="{f_tepe}" font-weight="800">🐟 {s2str(m)}</text>')
-    # Kabartı etiketleri (minör)
     for m in minor_m:
         x, y = x_koy(m), y_koy(aktivite(m))
         c += (f'<text x="{x:.0f}" y="{y-6:.0f}" text-anchor="middle" fill="#60a5fa" '
               f'font-size="{f_tepe}" font-weight="700">{s2str(m)}</text>')
-    # Dip etiketleri: grafiğin iç tabanında, tepe fontuyla aynı boy/renk
     tum_vakitler = sorted(major_m + minor_m)
     for i2 in range(len(tum_vakitler)):
         a2 = tum_vakitler[i2]
@@ -231,18 +296,15 @@ def dalga_ciz(g, gorunur, mobil=False):
         x = x_koy(orta)
         c += (f'<text x="{x:.0f}" y="{TABAN+40}" text-anchor="middle" fill="#4ade80" '
               f'font-size="{f_dip}" font-weight="800">{s2str(orta)}</text>')
-    # Saat ekseni
     for saat in range(0, 25, eksen_adim):
         x = x_koy(saat)
         c += (f'<line x1="{x:.0f}" y1="{TABAN}" x2="{x:.0f}" y2="{TABAN+6}" stroke="#334155"/>'
-              f'<text x="{x:.0f}" y="{TABAN+22}" text-anchor="middle" fill="#7d8b96" '
+              f'<text x="{x:.0f}" y="{TABAN+22}" text-anchor="middle" fill="#475569" '
               f'font-size="{f_eksen}">{saat:02d}</text>')
     c += f'<line x1="{GS}" y1="{TABAN}" x2="{GW-GS}" y2="{TABAN}" stroke="#334155" stroke-width="2"/>'
-    # Doğuş/batış saatleri (turuncu)
     for hhmm, sx in ((g["dogus"], dogus_s), (g["batis"], batis_s)):
         c += (f'<text x="{x_koy(sx):.0f}" y="{TAVAN-12}" text-anchor="middle" '
               f'fill="#f59e0b" font-size="{f_gunes}" font-weight="700">{hhmm}</text>')
-    # ŞİMDİ çizgisi (sadece bugün; JS canlı taşır)
     if gorunur:
         simdi_id = "simdi-m" if mobil else "simdi"
         c += (f'<g id="{simdi_id}"><line x1="0" y1="{TAVAN-16}" x2="0" y2="{TABAN}" '
@@ -271,23 +333,27 @@ for i, g in enumerate(tum_gunler):
         f'<circle cx="{x:.0f}" cy="{y:.0f}" r="5" fill="{g["renk"]}"/>'
         f'<text x="{x:.0f}" y="{y-10:.0f}" text-anchor="middle" fill="{g["renk"]}" '
         f'font-size="13" font-weight="700">{g["skor"]}</text>'
-        f'<text x="{x:.0f}" y="{H-6}" text-anchor="middle" fill="#475569" font-size="12">{gad}</text>')
+        f'<text x="{x:.0f}" y="{H-6}" text-anchor="middle" fill="#7d8b96" font-size="12">{gad}</text>')
 grafik = (f'<svg viewBox="0 0 {W} {H}" style="width:100%;height:auto">'
           f'<polyline points="{" ".join(noktalar)}" fill="none" stroke="#334155" stroke-width="2"/>'
           + "".join(etiketler) + '</svg>')
 
-# ================= SONRAKİ GÜNLER =================
+# ================= HAFTA ŞERİDİ (BUGÜN dahil) =================
 serit = ""
 for g in tum_gunler:
     bugun_mu = g is bugun_v
     yildiz = "⭐ " if g is en_iyi else ""
+    gun_adi = "BUGÜN" if bugun_mu else gunler[g["t"].weekday()]
+    data_ad = "bugün" if bugun_mu else f"{gunler[g['t'].weekday()]} {g['t'].day:02d}.{g['t'].month:02d}"
+    outline = "; outline:2px solid #4ade80" if bugun_mu else ""
     serit += f"""
-    <div class="skart" data-gun="{g['t'].isoformat()}" data-ad="{gunler[g['t'].weekday()]} {g['t'].day:02d}.{g['t'].month:02d}" onclick="dalgaSec(this)" style="border-top:5px solid {g['renk']}; cursor:pointer">
-      <div class="skart-gun">{yildiz}{gunler[g['t'].weekday()]} <span>{g['t'].day:02d}.{g['t'].month:02d}</span></div>
+    <div class="skart" data-gun="{g['t'].isoformat()}" data-ad="{data_ad}" onclick="gunSec(this)" style="border-top:5px solid {g['renk']}; cursor:pointer{outline}">
+      <div class="skart-gun">{yildiz}{gun_adi} <span>{g['t'].day:02d}.{g['t'].month:02d}</span></div>
       <div class="skart-ikon">{g['ikon']}</div>
       <div class="skart-skor" style="color:{g['renk']}">{g['skor']}</div>
       <div class="skart-detay">💨{g['ruzgar']:.0f}kn 🌊{g['dalga']:.1f}m</div>
       {"<div class='rozet'>🎣 basınç avantajı</div>" if g['basinc_bonus'] else ""}
+      {"<div class='rozet' style='background:#3f1d1d;color:#fca5a5'>⚠️ saha riskli</div>" if g['saha_riskli'] else ""}
     </div>"""
 
 # ================= INSTAGRAM =================
@@ -330,6 +396,9 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
          margin:0; padding:14px; max-width:760px; margin-left:auto; margin-right:auto; }}
   .tarih {{ color:#7d8b96; font-size:14px; margin:2px 0 12px; }}
 
+  .gunblok {{ display:none; }}
+  .gunblok.secili {{ display:block; }}
+
   .hero {{ border-radius:24px; padding:26px 20px 22px; text-align:center;
            color:#fff; margin-bottom:14px; }}
   .hero-gun {{ font-size:16px; font-weight:600; opacity:.9; letter-spacing:1px; }}
@@ -353,7 +422,7 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
     .dalga-m.secili {{ display:block; }}
   }}
 
-  .serit {{ display:flex; gap:10px; overflow-x:auto; padding-bottom:6px;
+  .serit {{ display:flex; gap:10px; overflow-x:auto; padding:3px; padding-bottom:6px;
             -webkit-overflow-scrolling:touch; scrollbar-width:none; }}
   .serit::-webkit-scrollbar {{ display:none; }}
   .skart {{ background:#14181d; border-radius:16px; padding:12px; min-width:112px;
@@ -384,32 +453,9 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
 </style></head><body>
 <div class="tarih">🐟 Balık — Finike · {bugun.strftime("%d.%m.%Y")} · ⭐ Haftanın günü: {en_iyi_ad}</div>
 
-<div class="hero" style="background:{bugun_v['renk']}">
-  <div class="hero-gun">BUGÜN · {gunler[bugun_v['t'].weekday()].upper()}</div>
-  <div class="hero-skor">{bugun_v['skor']}</div>
-  <div class="hero-karar">{'⚓ ' if bugun_v['skor']>=7 else ''}{bugun_v['karar']}</div>
-  <div class="hero-ikon">{bugun_v['ikon']}</div>
-  {"<div class='rozet rozet-hero'>🎣 basınç avantajı — balık beslenmede</div>" if bugun_v['basinc_bonus'] else ""}
-</div>
+{ust_bloklar}
 
-<div class="kutular">
-  <div class="kutu"><div class="kutu-ikon">💨</div>
-    <div class="kutu-deger">{bugun_v['ruzgar']:.1f} kn</div>
-    <div class="kutu-ad">Rüzgar {bugun_v['basinc']}</div></div>
-  <div class="kutu"><div class="kutu-ikon">🌊</div>
-    <div class="kutu-deger">{bugun_v['dalga']:.1f} m</div>
-    <div class="kutu-ad">Dalga</div></div>
-  <div class="kutu"><div class="kutu-ikon">🌡</div>
-    <div class="kutu-deger">{su} °C</div>
-    <div class="kutu-ad">Deniz suyu</div></div>
-  <div class="kutu"><div class="kutu-ikon">{bugun_v['ay_ikon']}</div>
-    <div class="kutu-deger" style="font-size:18px">{bugun_v['ay_ad']}</div>
-    <div class="kutu-ad">Ay</div></div>
-</div>
-
-{saha_html}
-
-<h2>📅 Sonraki günler</h2>
+<h2>📅 Bu hafta</h2>
 <div class="serit">{serit}</div>
 
 <h2>⏰ Saatler — <span id="dalga-baslik">bugün</span></h2>
@@ -430,14 +476,16 @@ html = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
 {sinyal_html}
 
 <script>
-function dalgaSec(kart) {{
-  document.querySelectorAll('.dalga').forEach(function(d) {{ d.classList.remove('secili'); }});
+function gunSec(kart) {{
   var g = kart.dataset.gun;
+  document.querySelectorAll('.gunblok, .dalga').forEach(function(d) {{ d.classList.remove('secili'); }});
+  document.getElementById('gunblok-' + g).classList.add('secili');
   document.getElementById('dalga-' + g).classList.add('secili');
   document.getElementById('dalga-m-' + g).classList.add('secili');
   document.getElementById('dalga-baslik').textContent = kart.dataset.ad;
   document.querySelectorAll('.skart').forEach(function(k) {{ k.style.outline = ''; }});
   kart.style.outline = '2px solid #4ade80';
+  window.scrollTo({{ top: 0, behavior: 'smooth' }});
 }}
 function simdiGuncelle() {{
   var d = new Date();
