@@ -162,7 +162,12 @@ def dalga_ciz(g, gorunur):
          f'<stop offset="100%" stop-color="#0a1020"/></linearGradient></defs>'
          f'<rect x="{GS}" y="{TAVAN-6}" width="{GW-2*GS}" height="{TABAN-TAVAN+6}" '
          f'fill="url(#{gid_grad})" rx="8"/>'
-         f'<path d="{yol}" fill="#16a34a" fill-opacity="0.35"/>'
+         f'<defs><linearGradient id="verim-{gid_grad}" x1="0" x2="0" y1="0" y2="1">'
+         f'<stop offset="0%" stop-color="#22c55e" stop-opacity="0.85"/>'
+         f'<stop offset="45%" stop-color="#eab308" stop-opacity="0.55"/>'
+         f'<stop offset="100%" stop-color="#7f1d1d" stop-opacity="0.45"/>'
+         f'</linearGradient></defs>'
+         f'<path d="{yol}" fill="url(#verim-{gid_grad})"/>'
          f'<path d="{yol}" fill="none" stroke="#4ade80" stroke-width="2.5"/>')
     for m in major_m:
         x, y = x_koy(m), y_koy(aktivite(m))
@@ -179,8 +184,8 @@ def dalga_ciz(g, gorunur):
         b2 = tum_vakitler[(i2 + 1) % len(tum_vakitler)]
         orta = (a2 + ((b2 - a2) % 24) / 2) % 24
         x, y = x_koy(orta), y_koy(aktivite(orta))
-        c += (f'<text x="{x:.0f}" y="{y+16:.0f}" text-anchor="middle" fill="#64748b" '
-              f'font-size="10">{s2str(orta)}</text>')
+        c += (f'<text x="{x:.0f}" y="{TABAN-8:.0f}" text-anchor="middle" fill="#4ade80" '
+              f'font-size="13" font-weight="800">{s2str(orta)}</text>')
     for saat in range(0, 25, 3):
         x = x_koy(saat)
         c += (f'<line x1="{x:.0f}" y1="{TABAN}" x2="{x:.0f}" y2="{TABAN+6}" stroke="#334155"/>'
