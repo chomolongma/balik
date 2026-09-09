@@ -93,22 +93,31 @@ def gun_hesapla(i, tarih):
     t = datetime.date.fromisoformat(tarih)
 
     skor = 10.0
-    if ruzgar > 10: skor -= (ruzgar - 10) * 0.6
-    skor -= dalga * 3
+    if ruzgar > 5:
+        skor -= (ruzgar - 5) * 0.45          # 5 kn'dan itibaren kademeli
+    if ruzgar > 14:
+        skor -= (ruzgar - 14) * 0.5          # sertleşince ek eğim
+    if dalga > 0.2:
+        skor -= (dalga - 0.2) * 5            # dalga cezası büyüdü
 
     basinc_yon = ""
     basinc_bonus = False
+    bonus_toplam = 0.0
     if i > 0 and basinclar[i] is not None and basinclar[i-1] is not None:
         fark = basinclar[i] - basinclar[i-1]
         if fark < -3:
-            skor += 1.0; basinc_yon = "▼"; basinc_bonus = True
+            bonus_toplam += 1.0; basinc_yon = "▼"; basinc_bonus = True
         elif fark < -1:
-            skor += 0.5; basinc_yon = "▼"; basinc_bonus = True
+            bonus_toplam += 0.5; basinc_yon = "▼"; basinc_bonus = True
         elif fark > 1:
             basinc_yon = "▲"
 
-    bonus, ay_ikon, ay_ad = ay_evre(t)
-    skor += bonus
+    ay_b, ay_ikon, ay_ad = ay_evre(t)
+    bonus_toplam += ay_b
+
+    skor = min(skor, 9.0) + min(bonus_toplam, 1.5)   # bonus tavana taşıyamaz, sadece taçlandırır
+    if not (ruzgar < 6 and dalga <= 0.2):
+        skor = min(skor, 9.4)                         # mükemmellik payı
     skor = max(0, min(10, round(skor, 1)))
 
     if skor >= 7:   renk, karar = "#16a34a", "ÇIKILIR"
